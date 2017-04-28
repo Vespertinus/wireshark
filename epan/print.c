@@ -2108,6 +2108,7 @@ static void write_specified_fields(fields_format format, output_fields_t *fields
     gint      col;
     gchar    *col_name;
     gpointer  field_index;
+    gsize     multiple_messages;
 
     write_field_data_t data;
 
@@ -2161,31 +2162,97 @@ static void write_specified_fields(fields_format format, output_fields_t *fields
             }
         }
 
-        for(i = 0; i < fields->fields->len; ++i) {
-            if (0 != i) {
-                fputc(fields->separator, fh);
-            }
-            if (NULL != fields->field_values[i]) {
-                GPtrArray *fv_p;
-                gchar * str;
-                gsize j;
-                fv_p = fields->field_values[i];
-                if (fields->quote != '\0') {
-                    fputc(fields->quote, fh);
-                }
+        multiple_messages = 1;
 
-                /* Output the array of (partial) field values */
-                for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
-                    str = (gchar *)g_ptr_array_index(fv_p, j);
-                    fputs(str, fh);
-                    g_free(str);
-                }
-                if (fields->quote != '\0') {
-                    fputc(fields->quote, fh);
-                }
-                g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
-                fields->field_values[i] = NULL;
+        for(i = 0; i < fields->fields->len; ++i) {
+            if (NULL == fields->field_values[i]) {
+                continue;
             }
+            if (g_ptr_array_len(fields->field_values[i]) > multiple_messages) {
+                multiple_messages = g_ptr_array_len(fields->field_values[i]);
+//                break;
+            }
+        }
+
+        if (multiple_messages > 1) {
+            gsize k;
+            gsize cur_ind;
+
+            for (k = 0; k < multiple_messages; k += 2) {
+
+                for(i = 0; i < fields->fields->len; ++i) {
+                    if (0 != i) {
+                        fputc(fields->separator, fh);
+                    }
+                    if (NULL != fields->field_values[i]) {
+                        GPtrArray *fv_p;
+                        gchar * str;
+                        fv_p = fields->field_values[i];
+                        if (fields->quote != '\0') {
+                            fputc(fields->quote, fh);
+                        }
+
+                        /* Output current partial field value */
+                        if (g_ptr_array_len(fv_p) > 1) {
+                                cur_ind = k;
+                        }
+                        else { cur_ind = 0; }
+
+                        if (cur_ind < g_ptr_array_len(fv_p)) {
+
+                            str = (gchar *)g_ptr_array_index(fv_p, cur_ind);
+                            fputs(str, fh);
+                            if ((k + 1) == multiple_messages) {
+                                g_free(str);
+                            }
+                        }
+
+                        if (fields->quote != '\0') {
+                            fputc(fields->quote, fh);
+                        }
+
+                        /* clean only on last message */
+                        if ((k + 1) == multiple_messages) {
+                            g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
+                            fields->field_values[i] = NULL;
+                        }
+                    }
+                }
+                if ((k + 1) != multiple_messages) {
+                        fputc('\n', fh);
+                }
+            }
+        }
+
+        else {
+
+            for(i = 0; i < fields->fields->len; ++i) {
+                if (0 != i) {
+                    fputc(fields->separator, fh);
+                }
+                if (NULL != fields->field_values[i]) {
+                    GPtrArray *fv_p;
+                    gchar * str;
+                    gsize j;
+                    fv_p = fields->field_values[i];
+                    if (fields->quote != '\0') {
+                        fputc(fields->quote, fh);
+                    }
+
+                    /* Output the array of (partial) field values */
+                    for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
+                        str = (gchar *)g_ptr_array_index(fv_p, j);
+                        fputs(str, fh);
+                        g_free(str);
+                    }
+                    if (fields->quote != '\0') {
+                        fputc(fields->quote, fh);
+                    }
+                    g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
+                    fields->field_values[i] = NULL;
+                }
+            }
+
         }
         break;
     case FORMAT_XML:
